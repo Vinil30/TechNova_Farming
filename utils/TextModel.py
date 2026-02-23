@@ -1,66 +1,97 @@
-from openai import OpenAI
 import os
-import json
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage, HumanMessage
-
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
+from langsmith import traceable
 load_dotenv()
+
 class TextModel:
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY")
+
         self.system_prompt = """
-            You are AgriNova AI, an expert farming assistant.
+You are AgriNova AI, an expert farming assistant helping rural farmers.
 
-            Your goal is to provide clear, practical, and personalized farming advice across the entire crop lifecycle.
+Your job is to give simple, practical, spoken-style advice.
 
-            Rules:
-            - Always retrieve farmer context from memory before answering.
-            - Use tools whenever numerical prediction or data lookup is required.
-            - Do not guess if a tool can provide the answer.
-            - Keep advice simple and step-based.
-            - Highlight risks (weather, pest, over-irrigation, nutrient imbalance).
-            - Ask for missing critical inputs instead of assuming.
-            - The output is then passed into a Voice agent, so dont mention any special characters, give the text like a proper conversation basis rather than professional tone.
-            - No particular output format need to be followed, everything should be plain english.
+CRITICAL RULES:
 
-            Available Tools:
+1. If a tool exists for a task, you MUST use it.
+2. Never guess values that tools can fetch.
+3. Farmers may not know temperature, rainfall, humidity.
+4. If environmental values are missing:
+   - First use weather_api_tool using UserLocation.
+   - If rainfall data missing, use Market_Price_Tavily_tool to search:
+     "average rainfall in <location> current season"
+5. After gathering required values, call prediction tools.
+6. Never ask farmers for technical numeric values unless absolutely unavoidable.
+7. Keep answers friendly, simple, conversational.
+8. No markdown, no symbols, no professional tone.
+9. Highlight risks like excess rain, pests, fertilizer imbalance.
+10. If multiple tools are needed, chain them step by step.
 
-            1. crop_prediction_tool
-            → Use for crop selection based on soil, rainfall, temperature, region.
+STRICT TOOL POLICY:
 
-            2. Market_Price_Tavily_tool
-            → Use for searching market prices on Web.
+- crop_prediction_tool → Always use when user is mentioning about best crop to grow, even if user doesn't provide relevant details, its your duty to collect and pass the input.If you can't figure out values, pass the average known values.
+- fertilizer_recommendation_tool → Always use when user is mentioning about fertilizers or recommend a fertilizer, even if user doesn't provide relevant details, its your duty to collect and pass the input.If you can't figure out values, pass the average known values.
+- weather_api_tool → Always use for weather queries or missing temperature.
+- Market_Price_Tavily_tool → Use for rainfall lookup or market price, this tool web searches and brings the current stats.
+- Crop_Yield_Production → Use for production estimation.
 
-            3. fertilizer_recommendation_tool
-            → Use for fertilizer type and NPK-based guidance.
+If you skip a tool when one is available, your answer is incorrect.
+"""
+    @traceable(name="Gemini LLM Reasoning")
+    def generate(self, user_name, userLoc, text, context, tools):
 
-            4. weather_api_tool
-            → Use for real-time or forecast weather data.
-
-            5. Crop_Yield_Production
-            → Used to estimate crop yield.
-
-            Response Format:
-            - Short summary
-            - Step-by-step advice
-            """
-    def generate(self, user_name,userLoc, text,context, tools):
         model = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash",
             temperature=0
         )
-        prompt = f"""
-        UserName:{user_name}
-        UserLocation:{userLoc}
-        Chat_Till_Now:{text}
-        Context:{context}
-        """
+
         model_with_tools = model.bind_tools(tools)
+
+        prompt = f"""
+UserName: {user_name}
+UserLocation: {userLoc}
+Chat_Till_Now: {text}
+Memory_Context: {context}
+"""
+
         messages = [
             SystemMessage(content=self.system_prompt),
             HumanMessage(content=prompt)
         ]
-        response = model_with_tools.invoke(messages)
-        return response.content[0]["text"]
 
+        response = model_with_tools.invoke(messages)
+        while True:       
+            if not response.tool_calls:
+                break
+
+            tool_call = response.tool_calls[0]
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
+
+            
+            tool_result = None
+            for t in tools:
+                if t.name == tool_name:
+                    tool_result = t.invoke(tool_args)
+                    break     
+            if tool_result is None:
+                break       
+            messages.append(response)
+
+            
+            messages.append(
+                ToolMessage(
+                    content=str(tool_result),
+                    tool_call_id=tool_call["id"]
+                )
+            )
+            response = model_with_tools.invoke(messages)
+        
+        if isinstance(response.content, list):
+            
+            return response.content[0]["text"]
+        else:
+            return response.content

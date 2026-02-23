@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from tavily import TavilyClient
-
+from langsmith import traceable
 load_dotenv()
 
 class TavilySearch:
@@ -11,6 +11,7 @@ class TavilySearch:
             raise ValueError("TAVILY_API_KEY not set")
         self.client = TavilyClient(api_key=api_key)
     
+    @traceable(name="Tavily Web Search")
     def search(self, query):
         response = self.client.search(
             query=query,

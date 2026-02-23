@@ -2,9 +2,10 @@ from .embedding import chunk_text
 from .embedding import embed_text
 from .vectordb import load_or_create_index, save_index, add_embeddings
 from .metadata_store import load_metadata, save_metadata
-
+from langsmith import traceable
 from datetime import datetime
 
+@traceable(name="Archive Session")
 def archive_session(user_id, messages):
     """
     messages = [

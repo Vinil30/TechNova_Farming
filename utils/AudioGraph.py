@@ -7,6 +7,7 @@ import pandas as pd
 from utils.TavilySearch import TavilySearch
 from utils.WeatherAPI import WeatherAPI
 from RAG.retrieve_pipeline import retrieve_memory
+from langsmith import traceable
 from typing import TypedDict, Optional, List, Dict, Any
 
 class AgentState(TypedDict):
@@ -218,17 +219,13 @@ def Crop_Yield_Production(
         return {"status":"success", "message":int(prediction)}
     except Exception as e:
         return {"status":"error", "message":str(e)}
-
+    
+@traceable(name="Memory Retrieval Step")
 def retriever(state:AgentState)->AgentState:
     state["retrieved_text"] = retrieve_memory(user_id=state["user_id"], question=state["user_query"])
     return state
-tools = [
-        crop_prediction_tool,
-        Crop_Yield_Production,
-        fertilizer_recommendation_tool,
-        weather_api_tool,
-        Market_Price_Tavily_tool
-    ]
+
+@traceable(name="Text Generation Agent")
 def text_agent(state:AgentState)->AgentState:
     agent = TextModel()
     tools = [
@@ -242,10 +239,16 @@ def text_agent(state:AgentState)->AgentState:
     state["output_text"] = str(response)
     return state
 
-def text_to_voice(state:AgentState)->AgentState:
+@traceable(name="Text To Speech Generation")
+def text_to_voice(state: AgentState) -> AgentState:
     TTS = TTSModel()
-    state["output_voice"] = TTS.synthesize(state["output_text"])
+    audio = TTS.synthesize(state["output_text"])
+    if audio:
+        state["output_voice"] = audio
+    else:
+        state["output_voice"] = None  
     return state
+
 
 
 graph = StateGraph(AgentState)

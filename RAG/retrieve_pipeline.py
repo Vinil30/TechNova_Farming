@@ -3,8 +3,10 @@ from .embedding import embed_text
 from .vectordb import load_or_create_index
 from .metadata_store import load_metadata
 #from .config import TOP_K
+from langsmith import traceable
 TOP_K = 3
 
+@traceable(name="Retrieve Memory")
 def retrieve_memory(user_id, question):
     # 1️⃣ Load index
     index = load_or_create_index(user_id)

@@ -1,8 +1,9 @@
 import requests
-
+from langsmith import traceable
 class WeatherAPI:
 
     @staticmethod
+    @traceable(name="Weather API - Get Coordinates")
     def get_coordinates(location):
         geo_url = "https://geocoding-api.open-meteo.com/v1/search"
         geo_params = {"name": location, "count": 1}
@@ -19,6 +20,7 @@ class WeatherAPI:
         return lat, lon
 
     @staticmethod
+    @traceable(name="Weather API - Get Current Weather")
     def get_weather(location):
         latitude, longitude = WeatherAPI.get_coordinates(location)
 

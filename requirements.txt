@@ -16,3 +16,4 @@ google-cloud-texttospeech
 sentence-transformers
 torch 
 faiss-cpu
+langsmith
