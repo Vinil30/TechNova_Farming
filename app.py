@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, session, flash, url_for, redirect
 from pymongo import MongoClient
-from utils.AudioGraph import graph
+from utils.AudioGraph import graph, fast_graph
 import os
 from flask_bcrypt import Bcrypt
 from datetime import datetime, timedelta
@@ -13,6 +13,7 @@ from RAG.archive_pipeline import archive_session
 load_dotenv()
 MONGO_URI = os.environ.get("MONGO_URI")
 compiled_graph = graph.compile()
+compiled_fast_graph = fast_graph.compile()
 
 app = Flask(__name__)
 db_client = MongoClient(MONGO_URI)
@@ -183,6 +184,66 @@ def audio_graph():
     return jsonify({
         "response": assistant_output
     })
+
+
+@app.route("/fast_graph", methods=["POST"])
+def text_graph():
+    user_id = session.get("user")
+    session_id = session.get("session_id")
+    if not user_id or not session_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    user_query = request.json.get("user_query")
+    conversations.update_one(
+        {"session_id": session_id},
+        {
+            "$setOnInsert": {
+                "user_id": ObjectId(user_id),
+                "session_id": session_id,
+                "created_at": datetime.utcnow(),
+                "Isarchieved": False
+            },
+            "$push": {
+                "messages": {
+                    "role": "user",
+                    "content": user_query,
+                    "timestamp": datetime.utcnow()
+                }
+            }
+        },
+        upsert=True
+    )
+
+    chat_session = conversations.find_one({"session_id": session_id})
+    user = users.find_one({"_id": ObjectId(user_id)})
+    userName = user["name"]
+    userLoc = user["location"]
+
+    output_state = compiled_fast_graph.invoke({       # <-- only change
+        "user_query": user_query,
+        "user_id": str(user_id),
+        "user_name": userName,
+        "user_location": userLoc,
+        "chat_history": chat_session.get("messages", [])
+    })
+
+    assistant_output = output_state["output_text"]
+    conversations.update_one(
+        {"session_id": session_id},
+        {
+            "$push": {
+                "messages": {
+                    "role": "assistant",
+                    "content": assistant_output
+                }
+            }
+        }
+    )
+    return jsonify({
+        "response": assistant_output
+    })
+
+
 @app.route("/dashboard")
 def user_dashboard():
     if "user" not in session:
