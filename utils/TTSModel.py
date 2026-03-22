@@ -1,18 +1,16 @@
 import os
 import base64
 import re
-from google import genai
-from google.genai import types
+from gtts import gTTS
 from dotenv import load_dotenv
 from langsmith import traceable
+from io import BytesIO
+
 load_dotenv()
 
 
 class TTSModel:
     def __init__(self):
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        self.client = genai.Client(api_key=self.api_key)
-
         self.prompt = """
 Speak in Hindi.
 Use simple Indian rural Hindi.
@@ -33,41 +31,21 @@ Avoid sounding robotic or dramatic.
         text = re.sub(r"\s+", " ", text)
 
         return text.strip()
-    
-    @traceable(name="Gemini TTS Generation")
+
+    @traceable(name="Chrome Hindi TTS Generation")
     def synthesize(self, text: str):
         cleaned_text = self.clean_text(text)
         full_text = self.prompt + "\n\n" + cleaned_text
 
         try:
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash-preview-tts",
-                contents=full_text,
-                config=types.GenerateContentConfig(
-                    response_modalities=["AUDIO"],
-                    speech_config=types.SpeechConfig(
-                        # language_code="hi-IN",
-                        voice_config=types.VoiceConfig(
-                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                voice_name="Charon"
-                            )
-                        )
-                    ),
-                ),
-            )
+            # ✅ Generate Hindi audio (Chrome-like voice)
+            tts = gTTS(text=full_text, lang='hi', tld='co.in', slow=False)
 
-            # 🔥 SAFE CHECKS
-            if (
-                not response
-                or not response.candidates
-                or not response.candidates[0].content
-                or not response.candidates[0].content.parts
-                or not response.candidates[0].content.parts[0].inline_data
-            ):
-                print("TTS returned empty response")
-                return None
+            # Save to memory instead of file
+            audio_buffer = BytesIO()
+            tts.write_to_fp(audio_buffer)
+            audio_bytes = audio_buffer.getvalue()
 
-            audio_bytes = response.candidates[0].content.parts[0].inline_data.data
             audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
             return audio_base64
