@@ -259,3 +259,11 @@ graph.add_edge(START,"MemoryRetriever")
 graph.add_edge("MemoryRetriever","TextGen")
 graph.add_edge("TextGen","VoiceGen")
 graph.add_edge("VoiceGen",END)
+
+
+fast_graph = StateGraph(AgentState)
+fast_graph.add_node("MemoryRetriever", retriever)
+fast_graph.add_node("TextGen", text_agent)
+fast_graph.add_edge(START, "MemoryRetriever")
+fast_graph.add_edge("MemoryRetriever", "TextGen")
+fast_graph.add_edge("TextGen", END)
