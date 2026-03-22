@@ -1,13 +1,13 @@
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langsmith import traceable
 load_dotenv()
 
 class TextModel:
     def __init__(self):
-        self.api_key = os.environ.get("GEMINI_API_KEY")
+        self.api_key = os.environ.get("GROQ_API_KEY")
 
         self.system_prompt = """
 You are AgriNova AI, an expert farming assistant helping rural farmers.
@@ -43,8 +43,8 @@ If you skip a tool when one is available, your answer is incorrect.
     @traceable(name="Gemini LLM Reasoning")
     def generate(self, user_name, userLoc, text, context, tools):
 
-        model = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
+        model = ChatGroq(
+            model="openai/gpt-oss-120b",
             temperature=0
         )
 
@@ -63,35 +63,42 @@ Memory_Context: {context}
         ]
 
         response = model_with_tools.invoke(messages)
-        while True:       
+
+        max_steps = 5
+        step = 0
+
+        while step < max_steps:
+            step += 1
+
             if not response.tool_calls:
                 break
 
-            tool_call = response.tool_calls[0]
-            tool_name = tool_call["name"]
-            tool_args = tool_call["args"]
+            for tool_call in response.tool_calls:
+                tool_name = tool_call["name"]
+                tool_args = tool_call["args"]
 
-            
-            tool_result = None
-            for t in tools:
-                if t.name == tool_name:
-                    tool_result = t.invoke(tool_args)
-                    break     
-            if tool_result is None:
-                break       
-            messages.append(response)
+                tool_result = None
+                for t in tools:
+                    if t.name == tool_name:
+                        tool_result = t.invoke(tool_args)
+                        break
 
-            
-            messages.append(
-                ToolMessage(
-                    content=str(tool_result),
-                    tool_call_id=tool_call["id"]
+                if tool_result is None:
+                    continue
+
+                messages.append(response)
+
+                messages.append(
+                    ToolMessage(
+                        content=str(tool_result),
+                        tool_call_id=tool_call["id"]
+                    )
                 )
-            )
+
             response = model_with_tools.invoke(messages)
-        
+
+
         if isinstance(response.content, list):
-            
             return response.content[0]["text"]
         else:
             return response.content
