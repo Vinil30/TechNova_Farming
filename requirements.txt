@@ -16,3 +16,4 @@ sentence-transformers
 torch 
 faiss-cpu
 langsmith
+gunicorn
